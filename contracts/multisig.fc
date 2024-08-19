@@ -1,0 +1,62 @@
+#include "imports/stdlib.fc";
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice in_msg_full_slice = in_msg_full.begin_parse();
+    int msg_flags = in_msg_full_slice~load_msg_flags();
+    if (msg_flags & 1) { ;; is bounced
+        return ();
+    }
+    slice sender_address = in_msg_full_slice~load_msg_addr();
+
+    if (in_msg_body.slice_bits() == 0) {
+        return (); ;; empty message - just accept TONs
+    }
+
+    int op = in_msg_body~load_op();
+
+    if (op == 0) {
+        return (); ;; simple text message - just accept TONs
+    }
+
+    (int ds_threshold, cell ds_signers, int ds_signers_num) = load_data();
+
+    if (op == op::approve) {
+        (int query_id, int signer_index, cell order_body) = load_approve_params(in_msg_body);
+    }
+
+
+}
+
+
+(int, cell, int) load_data() inline {
+    slice ds = get_data().begin_parse();
+    var data = (    
+        ds~load_index(), ;;threshold
+        ds~load_nonempty_dict(), ;; signers
+        ds~load_index()
+    );
+
+    data.end_parse();
+    return data;
+}
+
+() save_data(int threshold, cell signers, int signers_num) impure inline {
+    set_data(
+        begin_cell()
+        .store_index(threshold)
+        .store_nonempty_dict(signers)
+        .store_index(signers_num)
+        .end_cell()
+    );
+}
+
+
+;; return (query_id, signer_index, salt, order_body)
+(int, int, int, cell) load_approve_params(cell msg) impure inline {
+    return (
+        msg~load_query_id(),
+        msg~load_index(),
+        msg~load_uint(256),
+        msg~load_ref()
+    );
+}
