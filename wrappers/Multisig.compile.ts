@@ -1,6 +1,10 @@
 import { CompilerConfig } from '@ton/blueprint';
+import { compile as compileFunc } from '@ton/blueprint';
 
 export const compile: CompilerConfig = {
     lang: 'func',
-    targets: ['contracts/multisig.fc'],
+    preCompileHook: async () => {
+        await compileFunc('Order');
+    },
+    targets: ['contracts/multisig.func'],
 };
