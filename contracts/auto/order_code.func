@@ -4,4 +4,4 @@
 ;; and the representation hash Hash(c) of the library cell being referred to. When loaded, a library
 ;; reference cell may be transparently replaced by the cell it refers to, if found in the current library context.
 
-cell order_code() asm "<b 2 8 u, 0xf2f80ba15d8f576d9c23e469cc8ba987653caa02e8f2728dcebb9c0f324d3882 256 u, b>spec PUSHREF";
+cell order_code() asm "<b 2 8 u, 0x7c64b16600167a6ccebcd52e49314cdb76c829c092819076aad570c38d6a4483 256 u, b>spec PUSHREF";

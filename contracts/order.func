@@ -57,7 +57,7 @@ global int creation_timestamp;  ;; 新增：订单创建时间戳
         .store_index(approvals_num)
         .store_timestamp(expiration_date)
         .store_ref(order)
-        .store_timestamp(creation_timestamp)  ;; 新增：保存订单创建时间戳
+        .store_timestamp(creation_timestamp)  ;; 新增：存储订单创建时间戳
         .end_cell()
     );
 }
@@ -160,15 +160,6 @@ slice get_text_comment(slice in_msg_body) impure inline {
     }
 }
 
-() generate_order_seqno() impure {
-    ;; 根据订单内容和当前时间戳生成订单序列号
-    builder b = begin_cell();
-    b = b.store_ref(order);
-    b = b.store_timestamp(creation_timestamp);
-    cell order_data = b.end_cell();  ;; 生成 cell 类型数据
-    order_seqno = order_data.cell_hash();  ;; 获取订单序列号
-}
-
 ;; RECEIVE
 
 () recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
@@ -179,81 +170,44 @@ slice get_text_comment(slice in_msg_body) impure inline {
     }
     slice sender_address = in_msg_full_slice~load_msg_addr();
 
-    int op = in_msg_body~load_op();
-
     load_data();
 
-    if (op == 0) {
-        ;; message with text comment
-        slice text_comment = get_text_comment(in_msg_body);
-        throw_unless(error::unknown_op, equal_slices_bits(text_comment, "approve"));
-
-        (int signer_index, int found_signer?) = find_signer_by_address(sender_address);
-        throw_unless(error::unauthorized_sign, found_signer?);
-
-        approve(signer_index, sender_address, cur_lt());
-        return ();
-    }
-
+    ;; 判断是否有数据
+    int has_data = 1;
+    if (threshold == null()) { has_data = 0; }
     int query_id = in_msg_body~load_query_id();
 
-    if (op == op::init) {
-        throw_unless(error::unauthorized_init, equal_slices_bits(sender_address, multisig_address));
 
-        if (null?(threshold)) {
-            ;; Let's init
-            threshold = in_msg_body~load_index();
-            sent_for_execution? = false;
-            signers = in_msg_body~load_nonempty_dict();
-            approvals_mask = 0;
-            approvals_num = 0;
-            expiration_date = in_msg_body~load_timestamp();
-            throw_unless(error::expired, expiration_date >= now()); ;; in case of error TONs will bounce back to multisig
-            order = in_msg_body~load_ref();
-            creation_timestamp = now();  ;; 新增：设置订单创建时间戳
-
-            generate_order_seqno();  ;; 新增：生成订单序列号
-
-            int approve_on_init? = in_msg_body~load_bool();
-            if (approve_on_init?) {
-                int signer_index = in_msg_body~load_index();
-                add_approval(signer_index);
-                try_execute(query_id);
-            }
-            in_msg_body.end_parse();
-            save_data();
-            return ();
-        } else {
-            ;; order is inited second time, if it is inited by another oracle
-            ;; we count it as approval
-            throw_unless(error::already_inited, in_msg_body~load_index() == threshold);
-            throw_unless(error::already_inited, in_msg_body~load_nonempty_dict().cell_hash() == signers.cell_hash());
-            throw_unless(error::already_inited,in_msg_body~load_timestamp() == expiration_date);
-            throw_unless(error::already_inited, in_msg_body~load_ref().cell_hash() == order.cell_hash());
-
-            int approve_on_init? = in_msg_body~load_bool();
-            throw_unless(error::already_inited, approve_on_init?);
-            int signer_index = in_msg_body~load_index();
-            in_msg_body.end_parse();
-            (slice signer_address, int found?) = signers.udict_get?(INDEX_SIZE, signer_index);
-            throw_unless(error::unauthorized_sign, found?);
-            approve(signer_index, signer_address, query_id);
-            return ();
-        }
-    }
-
-    if (op == op::approve) {
+    if (has_data) {
+        ;; 默认进入 approve 方法
         int signer_index = in_msg_body~load_index();
         in_msg_body.end_parse();
         (slice signer_address, int found?) = signers.udict_get?(INDEX_SIZE, signer_index);
         throw_unless(error::unauthorized_sign, found?);
         throw_unless(error::unauthorized_sign, equal_slices_bits(sender_address, signer_address));
-
         approve(signer_index, sender_address, query_id);
-        return ();
-    }
+    } else {
+        throw_unless(error::unauthorized_init, equal_slices_bits(sender_address, multisig_address));
+        ;; Let's init
+        threshold = in_msg_body~load_index();
+        sent_for_execution? = false;
+        signers = in_msg_body~load_nonempty_dict();
+        approvals_mask = 0;
+        approvals_num = 0;
+        expiration_date = in_msg_body~load_timestamp();
+        creation_timestamp = now();  ;; 新增：设置创建时间戳
+        throw_unless(error::expired, expiration_date >= now()); ;; in case of error TONs will bounce back to multisig
+        order = in_msg_body~load_ref();
 
-    throw(error::unknown_op);
+        int approve_on_init? = in_msg_body~load_bool();
+        if (approve_on_init?) {
+            int signer_index = in_msg_body~load_index();
+            add_approval(signer_index);
+            try_execute(query_id);
+        }
+        in_msg_body.end_parse();
+        save_data();
+    }
 }
 
 ;; GET-METHODS
